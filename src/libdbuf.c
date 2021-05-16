@@ -12,53 +12,9 @@ struct dbuf_s {
 };
 
 
-// === Module function declarations ===
-// Creation and destruction
-static dbuf*    create     (uint64_t initial_size);
-static void     destroy    (dbuf* buffer);
-
-// Normal functions
-static uint64_t size       (dbuf* buffer);
-static uint64_t length     (dbuf* buffer);
-static bool     append     (dbuf* buffer, uint8_t value);
-static uint8_t  pop        (dbuf* buffer);
-static uint8_t* data       (dbuf* buffer);
-
-// Serialization and deserialization
-static void     serialize  (dbuf* buffer, FILE* file);
-static dbuf*    deserialize(FILE* file);
-
-
-// === Module API ===
-dbuf_m* dbuf_init_module() {
-    dbuf_m* ret = malloc(sizeof(dbuf_m));
-
-    // Creation and destruction
-    ret->create      = create;
-    ret->destroy     = destroy;
-
-    // Normal functions
-    ret->size        = size;
-    ret->length      = length;
-    ret->append      = append;
-    ret->pop         = pop;
-    ret->data        = data;
-
-    // Serialization and deserialization
-    ret->serialize   = serialize;
-    ret->deserialize = deserialize;
-
-    return ret;
-}
-
-void dbuf_destroy_module(dbuf_m* module) {
-    free(module);
-}
-
-
 // === Module function definitions ===
 // Creation and destruction
-static dbuf* create(uint64_t initial_size) {
+dbuf* dbuf_create(uint64_t initial_size) {
     dbuf* ret = malloc(sizeof(struct dbuf_s));
     ret->allocated_size = initial_size;
     ret->length_filled = 0;
@@ -67,22 +23,22 @@ static dbuf* create(uint64_t initial_size) {
     return ret;
 }
 
-static void destroy(dbuf* buffer) {
+void dbuf_destroy(dbuf* buffer) {
     free(buffer->data);
     free(buffer);
 }
 
 
 // Normal functions
-static uint64_t size(dbuf* buffer) {
+uint64_t dbuf_size(dbuf* buffer) {
     return buffer->allocated_size;
 }
 
-static uint64_t length(dbuf* buffer) {
+uint64_t dbuf_length(dbuf* buffer) {
     return buffer->length_filled;
 }
 
-static bool append(dbuf* buffer, uint8_t value) {
+bool dbuf_append(dbuf* buffer, uint8_t value) {
     buffer->data[buffer->length_filled] = value;
     buffer->length_filled++;
 
@@ -98,18 +54,18 @@ static bool append(dbuf* buffer, uint8_t value) {
     return true;
 }
 
-static uint8_t pop(dbuf* buffer) {
+uint8_t dbuf_pop(dbuf* buffer) {
     uint8_t byte = buffer->data[buffer->length_filled];
     buffer->length_filled--;
     return byte;
 }
 
-static uint8_t* data(dbuf* buffer) {
+uint8_t* dbuf_data(dbuf* buffer) {
     return buffer->data;
 }
 
 // Serialization and deserialization
-static void serialize(dbuf* buffer, FILE* file) {
+void dbuf_serialize(dbuf* buffer, FILE* file) {
     // Write magic number to file
     fwrite(DBUF_SERIAL_MAGIC, sizeof(uint8_t), 4, file);
 
@@ -120,7 +76,7 @@ static void serialize(dbuf* buffer, FILE* file) {
     fwrite(buffer->data, sizeof(uint8_t), buffer->length_filled, file);
 }
 
-static dbuf* deserialize(FILE* file) {
+dbuf* dbuf_deserialize(FILE* file) {
     uint8_t magic[5];
     size_t bytes_read;
 
@@ -150,14 +106,14 @@ static dbuf* deserialize(FILE* file) {
     }
 
     // Create a dbuf to fill with data
-    dbuf* ret = create(length);
+    dbuf* ret = dbuf_create(length);
 
     // Read data into dbuf directly (without using append function call)
     bytes_read = fread(ret->data, sizeof(uint8_t), length, file);
 
     // Make sure the right amount of bytes have been read
     if (bytes_read != sizeof(uint8_t) * length) {
-        destroy(ret);
+        dbuf_destroy(ret);
         errno = EIO;
         return NULL;
     }

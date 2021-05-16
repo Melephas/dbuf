@@ -6,6 +6,7 @@ AUTOMAKE_OPTIONS = no-dependencies
 
 #A test
 test1_SOURCES= test1.c
+test1_LDADD = ../src/libdbuf.la
 test1_CPPFLAGS= -I$(top_srcdir)/src/
 
 

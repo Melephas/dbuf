@@ -17,22 +17,18 @@
 
 typedef struct dbuf_s dbuf;
 
-typedef struct {
-    // Creation and destruction
-    dbuf*    (*create)     (uint64_t initial_size);
-    void     (*destroy)    (dbuf* buffer);
+// === Module function declarations ===
+// Creation and destruction
+dbuf*    dbuf_create     (uint64_t initial_size);
+void     dbuf_destroy    (dbuf* buffer);
 
-    // Normal functions
-    uint64_t (*size)       (dbuf* buffer);
-    uint64_t (*length)     (dbuf* buffer);
-    bool     (*append)     (dbuf* buffer, uint8_t value);
-    uint8_t  (*pop)        (dbuf* buffer);
-    uint8_t* (*data)       (dbuf* buffer);
+// Normal functions
+uint64_t dbuf_size       (dbuf* buffer);
+uint64_t dbuf_length     (dbuf* buffer);
+bool     dbuf_append     (dbuf* buffer, uint8_t value);
+uint8_t  dbuf_pop        (dbuf* buffer);
+uint8_t* dbuf_data       (dbuf* buffer);
 
-    // Serialization and deserialization
-    void     (*serialize)  (dbuf* buffer, FILE* file);
-    dbuf*    (*deserialize)(FILE* file);
-} dbuf_m;
-
-dbuf_m* dbuf_init_module();
-void    dbuf_destroy_module(dbuf_m* module);
+// Serialization and deserialization
+void     dbuf_serialize  (dbuf* buffer, FILE* file);
+dbuf*    dbuf_deserialize(FILE* file);
