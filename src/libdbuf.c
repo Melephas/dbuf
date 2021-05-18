@@ -1,124 +1,112 @@
-#include "libdbuf.h"
+#include <libdbuf.h>
 
-#include <errno.h>
+
 #include <stdlib.h>
 #include <string.h>
 
 
 struct dbuf_s {
     uint64_t allocated_size;
-    uint64_t length_filled;
+    uint64_t filled_length;
     uint8_t* data;
 };
 
 
-// === Module function definitions ===
+// === Standard C style library interface ===
 // Creation and destruction
-dbuf* dbuf_create(uint64_t initial_size) {
-    dbuf* ret = malloc(sizeof(struct dbuf_s));
-    ret->allocated_size = initial_size;
-    ret->length_filled = 0;
-    ret->data = malloc(initial_size);
+dbuf_t* dbuf_create(uint64_t initial_size) {
+    dbuf_t* buffer = malloc(sizeof(dbuf_t));
 
-    return ret;
+    buffer->allocated_size = initial_size;
+    buffer->filled_length = 0;
+    buffer->data = malloc(initial_size * sizeof(uint8_t));
+
+    return buffer;
 }
 
-void dbuf_destroy(dbuf* buffer) {
+void dbuf_destroy(dbuf_t* buffer) {
     free(buffer->data);
     free(buffer);
 }
 
 
 // Normal functions
-uint64_t dbuf_size(dbuf* buffer) {
+uint64_t dbuf_size(dbuf_t* buffer) {
     return buffer->allocated_size;
 }
 
-uint64_t dbuf_length(dbuf* buffer) {
-    return buffer->length_filled;
+uint64_t dbuf_length(dbuf_t* buffer) {
+    return buffer->filled_length;
 }
 
-bool dbuf_append(dbuf* buffer, uint8_t value) {
-    buffer->data[buffer->length_filled] = value;
-    buffer->length_filled++;
+uint8_t dbuf_pop(dbuf_t* buffer) {
+    uint8_t byte = buffer->data[buffer->filled_length];
+    buffer->filled_length--;
 
-    if (buffer->length_filled == buffer->allocated_size) {
+    return byte;
+}
+
+bool dbuf_append(dbuf_t* buffer, uint8_t value) {
+    buffer->filled_length++;
+
+    if (buffer->filled_length > buffer->allocated_size) {
         buffer->allocated_size += DBUF_CHUNK_SIZE;
-        void* new_data = realloc(buffer->data, buffer->allocated_size);
+        uint8_t* new_data = realloc(buffer->data, buffer->allocated_size);
         if (!new_data) {
-            buffer->allocated_size -= DBUF_CHUNK_SIZE;
             return false;
         }
         buffer->data = new_data;
     }
+
+    buffer->data[buffer->filled_length] = value;
     return true;
 }
 
-uint8_t dbuf_pop(dbuf* buffer) {
-    uint8_t byte = buffer->data[buffer->length_filled];
-    buffer->length_filled--;
-    return byte;
+bool dbuf_append_sequence(dbuf_t* buffer, uint8_t* sequence, uint64_t length) {
+    for (int i = 0; i < length; i++) {
+        if (!dbuf_append(buffer, sequence[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
-uint8_t* dbuf_data(dbuf* buffer) {
-    return buffer->data;
+
+// Conversion functions
+uint64_t dbuf_as_bytes(dbuf_t* buffer, uint8_t* destination) {
+    // Calculate lengths
+    uint64_t length = dbuf_length(buffer);
+    uint64_t total_length = (length * sizeof(uint8_t)) + sizeof(uint64_t);
+
+    // Initialise destination memory
+    destination = malloc(total_length);
+
+    // Write size to first bytes by interpreting as an array of uint64_t
+    uint64_t* size_pos = (uint64_t*) destination;
+    size_pos[0] = length;
+
+    // Move past written uint64_t
+    uint8_t* data_pos = ((uint8_t*) ++size_pos);
+
+    // Write the bytes stored in the buffer to the destination array
+    memcpy(data_pos, buffer->data, length);
+
+    return total_length;
 }
 
-// Serialization and deserialization
-void dbuf_serialize(dbuf* buffer, FILE* file) {
-    // Write magic number to file
-    fwrite(DBUF_SERIAL_MAGIC, sizeof(uint8_t), 4, file);
+dbuf_t* dbuf_from_bytes(uint8_t* source, uint64_t length) {
+    // Read stored size uint64_t by reinterpretation
+    uint64_t* size_pos = (uint64_t*) source;
+    uint64_t size = size_pos[0];
 
-    // Write length of buffer to file
-    fwrite(&buffer->length_filled, sizeof(uint64_t), 1, file);
-
-    // Write buffer data to file
-    fwrite(buffer->data, sizeof(uint8_t), buffer->length_filled, file);
-}
-
-dbuf* dbuf_deserialize(FILE* file) {
-    uint8_t magic[5];
-    size_t bytes_read;
-
-    // Read magic number
-    bytes_read = fread(magic, sizeof(uint8_t), 4, file);
-
-    // Make sure 4 bytes read
-    if (bytes_read != 4) {
-        errno = EIO;
+    // Check the length of the array matches the length of the data to be copied int the buffer (plus the storage for the uint64_t size variable)
+    if (length != size + sizeof(uint64_t)) {
         return NULL;
     }
 
-    // Make sure the read bytes are correct
-    if (strcmp(magic, DBUF_SERIAL_MAGIC) != 0) {
-        errno = EILSEQ;
-        return NULL;
-    }
-
-    // Read the length of the data
-    uint64_t length;
-    bytes_read = fread(&length, sizeof(uint64_t), 1, file);
-
-    // Make sure uint64_t was read
-    if (bytes_read != sizeof(uint64_t)) {
-        errno = EIO;
-        return NULL;
-    }
-
-    // Create a dbuf to fill with data
-    dbuf* ret = dbuf_create(length);
-
-    // Read data into dbuf directly (without using append function call)
-    bytes_read = fread(ret->data, sizeof(uint8_t), length, file);
-
-    // Make sure the right amount of bytes have been read
-    if (bytes_read != sizeof(uint8_t) * length) {
-        dbuf_destroy(ret);
-        errno = EIO;
-        return NULL;
-    }
+    // Create the buffer and copy the data into it
+    dbuf_t* ret = dbuf_create(size);
+    memcpy(ret->data, source + (sizeof(uint64_t)/sizeof(uint8_t)), size);
 
     return ret;
 }
-
-
